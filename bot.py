@@ -4,13 +4,15 @@ import requests
 import telegram
 from telegram.ext import (
     Updater, CommandHandler, ConversationHandler, 
-    MessageHandler, filters as Filters, Application
+    MessageHandler, filters as Filters, Application,
+    CallbackQueryHandler
 )
 from dotenv import load_dotenv
 
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 API_BASE_URL = os.getenv("API_BASE_URL")
+API_TOKEN = os.getenv("API_TOKEN")
 
 default_keys = [
     {
@@ -28,19 +30,15 @@ default_keys = [
     {
         'name': 'Switch Network',
         'command': 'switchnetwork'
-    },
-    {
-        'name': 'Transfer',
-        'command': 'transfer'
     }
 ]
 
 commands = [
-    {"command": "help", "description": "Get a list of available commands with their use"},
+    {"command": "help", "description": "Get a list of available commands with their use."},
     {"command": "signup", "description": "Register with your telegram account."},
-    {"command": "balance", "description": "Check wallet balance"},
-    {"command": "transfer", "description": "Transfer SOL to another wallet"},
-    {"command": "switchnetwork", "description": "Switch Solana networks"},
+    {"command": "balance", "description": "Check wallet balance."},
+    {"command": "transfer", "description": "Transfer SOL to another wallet."},
+    {"command": "switchnetwork", "description": "Switch Solana networks."},
 ]
 
 class SolanaWalletTelegramBot:
@@ -74,20 +72,7 @@ class SolanaWalletTelegramBot:
             self.TRANSFER_AMOUNT,
             self.TRANSFER_WALLET
         ) = range(8)
-
-    def get_default_reply_markup(self, commands):
-        """
-        Get command keys
-        """
-        keyboard = [
-            [telegram.InlineKeyboardButton(key['name'], callback_data=key['command'])]
-            for key in default_keys
-        ]
-
-        default_reply_markup = telegram.InlineKeyboardMarkup(keyboard)
-        return default_reply_markup
             
-
     def extract_telegram_user_info(self, update):
         """
         Extract comprehensive user information from Telegram
@@ -115,11 +100,19 @@ class SolanaWalletTelegramBot:
         # Extract error details
         error = error_response.get('error', 'Unknown Error')
         details = error_response.get('details', '')
+
+        if error == "Account not found":
+            error = "You have 0 SOL in your account. Please deposit some SOL to continue."
+        else:
+            error = error
         
         # Construct user-friendly error message
         error_message = f"❌ {error}"
         if details:
-            error_message += f"\n📝 Details: {details}"
+            if details == "Cannot read properties of undefined (reading 'PrivateKey')":
+                error_message += f"\n📝 Details: The wallet you sent the index for doesn't exist."
+            else:    
+                error_message += f"\n📝 Details: {details}"
         
         # Send error to user
         await update.message.reply_text(error_message)
@@ -137,18 +130,21 @@ class SolanaWalletTelegramBot:
         Start command handler
         """
         await self.set_commands(update) # Set commands
-        default_reply_markup = self.get_default_reply_markup(default_keys)
         await update.message.reply_text(
-            "🚀 Welcome to Solana Wallet Bot!\n"
-            "Use /signup to create a new wallet.\n"
-            "Use /balance to check your wallet balance.\n"
-            "Use /transfer to send SOL to another wallet.\n"
-            "Use /switchnetwork to switch Solana networks.\n"
-            "Available networks: mainnet-beta, testnet, devnet, custom.\n"
-            "You can use custom network to connect to solana using your own RPC url.\n"
-            "Use /help to see this message again.",
-            reply_markup=default_reply_markup
-        )
+        "🚀 **Welcome to the Solana Wallet Bot!**\n\n"
+        "Here's how you can get started:\n\n"
+        "1️⃣ /signup - Register your telegram account\n"
+        "💰 /balance - Check your wallet balance\n"
+        "💸 /transfer - Send SOL to another wallet\n"
+        "🌐 /switchnetwork - Switch between Solana networks\n\n"
+        "🔹 Available Networks:\n"
+        "   - mainnet-beta\n"
+        "   - testnet\n"
+        "   - devnet\n"
+        "   - custom (connect to Solana using your own RPC URL)\n\n"
+        "🔄 Use /help anytime to view this message again!"
+    )
+
 
     async def signup_command(self, update, context):
         """
@@ -207,7 +203,8 @@ class SolanaWalletTelegramBot:
         signup_payload = {
             **self.extract_telegram_user_info(update),
             'name': wallet_name,
-            'password': password
+            'password': password,
+            'API_TOKEN': API_TOKEN
         }
         
         try:
@@ -298,7 +295,7 @@ class SolanaWalletTelegramBot:
         context.user_data['network'] = network
 
         await update.message.reply_text(
-            "🔑 Enter your password to switch networks:"
+            "🔑 Enter your password:"
         )
 
         return self.NETWORK_SELECTION
@@ -322,7 +319,8 @@ class SolanaWalletTelegramBot:
             'telegramId': str(update.effective_user.id),
             'password': context.user_data.get('password', ''),
             'network': network,
-            'password': password
+            'password': password,
+            'API_TOKEN': API_TOKEN
         }
         
         try:
@@ -359,7 +357,8 @@ class SolanaWalletTelegramBot:
             'password': context.user_data.get('password', ''),
             'network': 'custom',
             'rpcUrl': custom_rpc_url,
-            'password': password
+            'password': password,
+            'API_TOKEN': API_TOKEN
         }
         
         try:
@@ -388,7 +387,7 @@ class SolanaWalletTelegramBot:
         Initiate balance check process
         """
         await update.message.reply_text(
-            "🏦 Enter the wallet index to check balance:"
+            "🏦 Enter the wallet name to check balance:"
         )
         return self.SIGNUP_PASSWORD  # Reuse password collection state
     
@@ -396,11 +395,11 @@ class SolanaWalletTelegramBot:
         """
         Collect password for network switch
         """
-        index = update.message.text
-        context.user_data['wallet_index'] = index
+        name = update.message.text
+        context.user_data['wallet_name'] = name
 
         await update.message.reply_text(
-            "🔑 Enter your password to switch networks:"
+            "🔑 Enter your password:"
         )
 
         return self.BALANCE
@@ -410,13 +409,14 @@ class SolanaWalletTelegramBot:
         Retrieve and display wallet balance
         """
         password = update.message.text
-        wallet_index = context.user_data.get('wallet_index', 0)
+        wallet_name = context.user_data.get('wallet_name', 'null')
         
         # Prepare balance check payload
         balance_payload = {
             'telegramId': str(update.effective_user.id),
             'password': password,
-            'walletIndex': wallet_index # Default to first wallet
+            'walletName': wallet_name, # Default to first wallet
+            'API_TOKEN': API_TOKEN 
         }
         
         try:
@@ -428,7 +428,7 @@ class SolanaWalletTelegramBot:
             if response.status_code == 200:
                 balance_data = response.json()
                 await update.message.reply_text(
-                    f"💰 Balance: {balance_data['balance']} SOL"
+                    f"💰 Balance: {balance_data['balance'] / 1_000_000_000} SOL"
                 )
             else:
                 await self.handle_server_error(update, response.json())
@@ -471,16 +471,28 @@ class SolanaWalletTelegramBot:
             context.user_data['transfer_amount'] = amount
             
             await update.message.reply_text(
-                "🏦 Enter source wallet index:"
+                "🏦 Enter wallet name to send SOL from:"
             )
             
-            return self.TRANSFER_WALLET
+            return self.SIGNUP_PASSWORD
         
         except ValueError:
             await update.message.reply_text(
                 "❌ Invalid amount. Please enter a valid number."
             )
             return self.TRANSFER_AMOUNT
+    
+    async def process_password_for_sol_transfer(self, update, context):
+        """
+        Collect password for network switch
+        """
+        wallet_name = update.message.text
+        context.user_data['wallet_name'] = wallet_name
+        await update.message.reply_text(
+            "🔑 Enter your password:"
+        )
+
+        return self.TRANSFER_WALLET
 
     async def complete_transfer(self, update, context):
         """
@@ -492,9 +504,10 @@ class SolanaWalletTelegramBot:
         transfer_payload = {
             'telegramId': str(update.effective_user.id),
             'password': password,
-            'receiverAddress': context.user_data['receiver_address'],
-            'amount': context.user_data['transfer_amount'],
-            'walletIndex': 0  # Default to first wallet
+            'to': context.user_data.get('receiver_address', ''),
+            'amount': context.user_data.get('transfer_amount', 0),
+            'walletName': context.user_data.get('wallet_name', 0),
+            'API_TOKEN': API_TOKEN  
         }
         
         try:
@@ -587,6 +600,9 @@ class SolanaWalletTelegramBot:
                 ],
                 self.TRANSFER_AMOUNT: [
                     MessageHandler(Filters.TEXT & ~Filters.COMMAND, self.process_transfer_amount)
+                ],
+                self.SIGNUP_PASSWORD: [
+                    MessageHandler(Filters.TEXT & ~Filters.COMMAND, self.process_password_for_sol_transfer)
                 ],
                 self.TRANSFER_WALLET: [
                     MessageHandler(Filters.TEXT & ~Filters.COMMAND, self.complete_transfer)
