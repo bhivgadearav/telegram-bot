@@ -11,7 +11,7 @@ TODO
 
 # Distribution / packaging
 .Python
-env/
+.env
 venv/
 ENV/
 env.bak/
