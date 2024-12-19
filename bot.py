@@ -13,6 +13,7 @@ load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 API_BASE_URL = os.getenv("API_BASE_URL")
 API_TOKEN = os.getenv("API_TOKEN")
+print(TELEGRAM_TOKEN, API_BASE_URL, API_TOKEN)
 
 default_keys = [
     {
@@ -210,7 +211,7 @@ class SolanaWalletTelegramBot:
         try:
             # Send signup request to backend
             response = requests.post(
-                f"{self.server_url}/api/signup", 
+                f"http://{self.server_url}/api/signup", 
                 json=signup_payload
             )
             
@@ -325,7 +326,7 @@ class SolanaWalletTelegramBot:
         
         try:
             response = requests.post(
-                f"{self.server_url}/api/network/switch", 
+                f"http://{self.server_url}/api/network/switch", 
                 json=switch_payload
             )
             
@@ -363,7 +364,7 @@ class SolanaWalletTelegramBot:
         
         try:
             response = requests.post(
-                f"{self.server_url}/api/network/switch", 
+                f"http://{self.server_url}/api/network/switch", 
                 json=switch_payload
             )
             
@@ -421,7 +422,7 @@ class SolanaWalletTelegramBot:
         
         try:
             response = requests.post(
-                f"{self.server_url}/api/balance", 
+                f"http://{self.server_url}/api/balance", 
                 json=balance_payload
             )
             
@@ -512,7 +513,7 @@ class SolanaWalletTelegramBot:
         
         try:
             response = requests.post(
-                f"{self.server_url}/api/transfer", 
+                f"http://{self.server_url}/api/transfer", 
                 json=transfer_payload
             )
             

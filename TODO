@@ -3,3 +3,5 @@ Modularize/organze the code into different files and folders
 add a /sendtxn to send a serialized transaction to the blockchain
 fix message inline buttons not working on click - https://chatgpt.com/c/675e7225-4a38-8000-9a58-4e3d9d0ad5be
 add functionality to ask user for wallet name for transfer + fix transfer it doesnt work right now
+
+run the bot code and test if the backend server works and then figure out a way to host this python code
